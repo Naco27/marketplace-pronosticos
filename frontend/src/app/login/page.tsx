@@ -17,13 +17,22 @@ export default function Login() {
   const { login, setTokens, error, loading } = useAuthStore();
   const router = useRouter();
 
+  const [isEmailLogin, setIsEmailLogin] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [guestLoading, setGuestLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code) return;
-    const ok = await login({ code });
+    let ok = false;
+    if (isEmailLogin) {
+      if (!email || !password) return;
+      ok = await login({ email, password });
+    } else {
+      if (!code) return;
+      ok = await login({ code });
+    }
     if (ok) {
       router.push('/dashboard');
       router.refresh();
@@ -56,7 +65,11 @@ export default function Login() {
           <ShieldCheck className="h-7 w-7 text-slate-950" />
         </div>
         <h1 className="text-2xl font-extrabold text-white">Ingreso Tipster</h1>
-        <p className="text-sm text-slate-500 mt-1">Ingresa el código secreto para acceder al panel de Tipster</p>
+        <p className="text-sm text-slate-500 mt-1">
+          {isEmailLogin 
+            ? 'Ingresa tus credenciales de Tipster' 
+            : 'Ingresa el código secreto para acceder al panel de Tipster'}
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -66,18 +79,42 @@ export default function Login() {
           </div>
         )}
 
-        <div>
-          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Código de Acceso Tipster</label>
-          <input type="text" required value={code} onChange={e => setCode(e.target.value)}
-            placeholder="Introduce el código secreto..."
-            className="mt-1.5 w-full rounded-xl bg-slate-900/90 border border-white/5 p-3.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
-        </div>
+        {isEmailLogin ? (
+          <>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Correo Electrónico</label>
+              <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="ejemplo@correo.com"
+                className="mt-1.5 w-full rounded-xl bg-slate-900/90 border border-white/5 p-3.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Contraseña</label>
+              <input type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="mt-1.5 w-full rounded-xl bg-slate-900/90 border border-white/5 p-3.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Código de Acceso Tipster</label>
+            <input type="text" required value={code} onChange={e => setCode(e.target.value)}
+              placeholder="Introduce el código secreto..."
+              className="mt-1.5 w-full rounded-xl bg-slate-900/90 border border-white/5 p-3.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition" />
+          </div>
+        )}
 
         <button type="submit" disabled={loading}
           className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-extrabold text-sm transition hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 press">
           {loading ? 'Ingresando...' : <>Ingresar a Panel <ArrowRight className="h-4 w-4" /></>}
         </button>
       </form>
+
+      {/* Switch method */}
+      <button type="button" onClick={() => setIsEmailLogin(!isEmailLogin)}
+        className="text-xs text-center text-emerald-400 hover:text-emerald-300 font-bold mt-4 focus:outline-none">
+        {isEmailLogin ? 'Ingresar con Código de Acceso Tipster' : 'Ingresar con Email y Contraseña'}
+      </button>
 
       {/* Divider */}
       <div className="relative my-8">
