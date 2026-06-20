@@ -1,0 +1,100 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String       @id @default(uuid())
+  username     String?      @unique
+  email        String?      @unique
+  passwordHash String?
+  name         String
+  role         String       // "ADMIN", "TIPSTER", "PUNTER"
+  isVerified   Boolean      @default(false)
+  avatarUrl    String?
+  freeBetsCount Int       @default(0)  // 🎁 Replacement bets count
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  
+  predictions  Prediction[] @relation("TipsterPredictions")
+  purchases    Purchase[]   @relation("PunterPurchases")
+  reviews      Review[]     @relation("UserReviews")
+  stats        TipsterStats?
+}
+
+model Prediction {
+  id          String     @id @default(uuid())
+  tipsterId   String
+  tipster     User       @relation("TipsterPredictions", fields: [tipsterId], references: [id], onDelete: Cascade)
+  sport       String
+  league      String
+  eventDate   DateTime
+  odds        Float
+  stake       Float
+  price       Float
+  description   String
+  imageUrl      String?
+  argumentation String?
+  betLink       String?
+  isFixed       Boolean    @default(false)
+  availableUntil DateTime?
+  isCompleted   Boolean    @default(false)
+  result        String     @default("PENDING") // "PENDING", "WON", "LOST", "VOID"
+  resolvedAt    DateTime?  // Set when tipster resolves the pick
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  purchases   Purchase[]
+}
+
+model Purchase {
+  id           String       @id @default(uuid())
+  punterId     String?
+  punter       User?        @relation("PunterPurchases", fields: [punterId], references: [id], onDelete: Cascade)
+  guestEmail   String?
+  predictionId String
+  prediction   Prediction   @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  amountPaid   Float
+  status       String       @default("PENDING") // "PENDING", "COMPLETED", "FAILED"
+  screenshotUrl String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  
+  transaction  Transaction?
+}
+
+model Transaction {
+  id               String   @id @default(uuid())
+  purchaseId       String   @unique
+  purchase         Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  paymentMethod    String   // "STRIPE", "PAYPAL", "YAPE", "PLIN"
+  paymentGatewayId String?  // ID de la transacción en la pasarela o referencia manual
+  amount           Float
+  platformFee      Float
+  tipsterEarnings  Float
+  createdAt        DateTime @default(now())
+}
+
+model TipsterStats {
+  id               String @id @default(uuid())
+  tipsterId        String @unique
+  tipster          User   @relation(fields: [tipsterId], references: [id], onDelete: Cascade)
+  totalPredictions Int    @default(0)
+  wonPredictions   Int    @default(0)
+  yield            Float  @default(0.0)
+  profit           Float  @default(0.0)
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  reviewerId String
+  reviewer  User     @relation("UserReviews", fields: [reviewerId], references: [id], onDelete: Cascade)
+  tipsterId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+}

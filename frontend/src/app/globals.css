@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --background: #050810;
+  --foreground: #f8fafc;
+  --accent: #10b981;
+  --accent2: #06b6d4;
+  --surface: rgba(15, 23, 42, 0.7);
+  --border: rgba(255,255,255,0.06);
+}
+
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, sans-serif;
+  /* Mobile app feel - prevent bouncing */
+  overscroll-behavior: none;
+}
+
+/* Safe area for notched phones */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 16px); }
+
+/* Glass morphism */
+.glass {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.07);
+}
+
+.glass-panel {
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-card-hover:hover {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: rgba(52, 211, 153, 0.2);
+  box-shadow: 0 12px 40px -12px rgba(52, 211, 153, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Grid bg */
+.bg-grid {
+  background-size: 40px 40px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+}
+
+/* Bottom nav active glow */
+.nav-active {
+  color: #10b981;
+  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.5));
+}
+
+/* Status bar badge pulse */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+  50% { opacity: 0.85; box-shadow: 0 0 0 5px rgba(239,68,68,0); }
+}
+.badge-live {
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+
+/* Card press effect */
+.press:active { transform: scale(0.97); transition: transform 0.1s; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
