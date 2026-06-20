@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getAPI_URL } from '@/utils/config';
 
 export interface Prediction {
   id: string;
@@ -75,7 +76,7 @@ interface PredictionState {
   fetchPendingPayments: (token: string) => Promise<void>;
 }
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = getAPI_URL();
 
 export const usePredictionStore = create<PredictionState>((set, get) => ({
   predictions: [],

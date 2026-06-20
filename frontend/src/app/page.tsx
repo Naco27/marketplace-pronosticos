@@ -9,8 +9,9 @@ import {
   Lock, Unlock, CheckCircle, Flame, ChevronRight,
   Upload, X
 } from 'lucide-react';
+import { getAPI_URL, getBaseUrl } from '@/utils/config';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = getAPI_URL();
 
 function TimeUntil({ date, onExpired }: { date: string; onExpired?: () => void }) {
   const [label, setLabel] = useState('');
@@ -88,7 +89,7 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
       });
       const uploadData = await uploadRes.json();
       if (uploadRes.ok) {
-        finalScreenshotUrl = `http://localhost:5000${uploadData.imageUrl}`;
+        finalScreenshotUrl = `${getBaseUrl()}${uploadData.imageUrl}`;
       } else {
         alert('Error al subir la captura de pago: ' + (uploadData.error || 'Error desconocido'));
         setLoading(false);

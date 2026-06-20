@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/useAuthStore';
 import { CreditCard, ShieldCheck } from 'lucide-react';
+import { getAPI_URL } from '@/utils/config';
 
 function PaymentSimulationContent() {
   const searchParams = useSearchParams();
@@ -20,7 +21,7 @@ function PaymentSimulationContent() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const API_URL = 'http://localhost:5000/api';
+  const API_URL = getAPI_URL();
 
   useEffect(() => {
     // Fetch purchase amount if needed or mock it

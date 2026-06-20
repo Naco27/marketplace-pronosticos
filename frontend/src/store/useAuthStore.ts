@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getAPI_URL } from '@/utils/config';
 
 export interface User {
   id: string;
@@ -47,7 +48,7 @@ interface AuthState {
   setTokens: (accessToken: string, refreshToken: string, user: User) => void;
 }
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = getAPI_URL();
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,

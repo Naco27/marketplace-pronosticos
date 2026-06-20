@@ -5,8 +5,9 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, ArrowRight, User } from 'lucide-react';
+import { getAPI_URL } from '@/utils/config';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = getAPI_URL();
 
 export default function Login() {
   const { login, setTokens, error, loading } = useAuthStore();

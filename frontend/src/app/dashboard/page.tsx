@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { usePredictionStore, Prediction } from '@/store/usePredictionStore';
 import { useRouter } from 'next/navigation';
 import { PlusCircle, ShieldAlert, Award, Calendar, DollarSign, Wallet, FileText, Check, X, Upload, Image, Clock, ChevronDown } from 'lucide-react';
+import { getAPI_URL, getBaseUrl } from '@/utils/config';
 
 export default function Dashboard() {
   const { user, accessToken } = useAuthStore();
@@ -46,7 +47,7 @@ export default function Dashboard() {
   // Admin Approval dialog state
   const [referenceCodeMap, setReferenceCodeMap] = useState<{ [key: string]: string }>({});
 
-  const API_URL = 'http://localhost:5000/api';
+  const API_URL = getAPI_URL();
 
   useEffect(() => {
     if (!user) {
@@ -203,7 +204,7 @@ export default function Dashboard() {
         });
         const uploadData = await uploadRes.json();
         if (uploadRes.ok) {
-          finalImageUrl = `http://localhost:5000${uploadData.imageUrl}`;
+          finalImageUrl = `${getBaseUrl()}${uploadData.imageUrl}`;
         } else {
           alert('Error al subir la imagen: ' + (uploadData.error || 'Error desconocido'));
           setDashboardLoading(false);
