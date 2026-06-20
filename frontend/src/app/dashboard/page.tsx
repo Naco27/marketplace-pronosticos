@@ -47,7 +47,11 @@ export default function Dashboard() {
   // Admin Approval dialog state
   const [referenceCodeMap, setReferenceCodeMap] = useState<{ [key: string]: string }>({});
 
-  const API_URL = getAPI_URL();
+  const API_URL = {
+    toString() {
+      return getAPI_URL();
+    }
+  } as unknown as string;
 
   useEffect(() => {
     if (!user) {

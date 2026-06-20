@@ -21,7 +21,11 @@ function PaymentSimulationContent() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const API_URL = getAPI_URL();
+  const API_URL = {
+    toString() {
+      return getAPI_URL();
+    }
+  } as unknown as string;
 
   useEffect(() => {
     // Fetch purchase amount if needed or mock it

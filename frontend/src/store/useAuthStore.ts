@@ -48,7 +48,11 @@ interface AuthState {
   setTokens: (accessToken: string, refreshToken: string, user: User) => void;
 }
 
-const API_URL = getAPI_URL();
+const API_URL = {
+  toString() {
+    return getAPI_URL();
+  }
+} as unknown as string;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,

@@ -11,7 +11,11 @@ import {
 } from 'lucide-react';
 import { getAPI_URL, getBaseUrl } from '@/utils/config';
 
-const API_URL = getAPI_URL();
+const API_URL = {
+  toString() {
+    return getAPI_URL();
+  }
+} as unknown as string;
 
 function TimeUntil({ date, onExpired }: { date: string; onExpired?: () => void }) {
   const [label, setLabel] = useState('');

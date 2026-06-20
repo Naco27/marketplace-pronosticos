@@ -76,7 +76,11 @@ interface PredictionState {
   fetchPendingPayments: (token: string) => Promise<void>;
 }
 
-const API_URL = getAPI_URL();
+const API_URL = {
+  toString() {
+    return getAPI_URL();
+  }
+} as unknown as string;
 
 export const usePredictionStore = create<PredictionState>((set, get) => ({
   predictions: [],

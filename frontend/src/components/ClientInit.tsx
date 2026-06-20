@@ -4,7 +4,11 @@ import { useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { getAPI_URL } from '@/utils/config';
 
-const API_URL = getAPI_URL();
+const API_URL = {
+  toString() {
+    return getAPI_URL();
+  }
+} as unknown as string;
 
 export default function ClientInit() {
   const { initialize, setTokens, user } = useAuthStore();

@@ -7,7 +7,11 @@ import Link from 'next/link';
 import { ShieldCheck, ArrowRight, User } from 'lucide-react';
 import { getAPI_URL } from '@/utils/config';
 
-const API_URL = getAPI_URL();
+const API_URL = {
+  toString() {
+    return getAPI_URL();
+  }
+} as unknown as string;
 
 export default function Login() {
   const { login, setTokens, error, loading } = useAuthStore();
