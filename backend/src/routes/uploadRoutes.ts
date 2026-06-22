@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { uploadToCloudinary, isCloudinaryConfigured } from '../utils/cloudinary';
 
 const router = Router();
 
@@ -37,15 +38,38 @@ const upload = multer({
   },
 });
 
-router.post('/image', upload.single('image'), (req: Request, res: Response) => {
+router.post('/image', upload.single('image'), async (req: Request, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No se subió ninguna imagen.' });
   }
 
-  // Return the URL path to access the file
+  // Si Cloudinary está configurado, subir allí y borrar copia local temporal
+  if (isCloudinaryConfigured) {
+    try {
+      const cloudinaryUrl = await uploadToCloudinary(req.file.path);
+      if (cloudinaryUrl) {
+        // Borrar el archivo local para ahorrar almacenamiento del servidor
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (err) {
+          console.error('Error al eliminar archivo local temporal:', err);
+        }
+        
+        return res.status(201).json({
+          message: 'Imagen subida a Cloudinary correctamente.',
+          imageUrl: cloudinaryUrl,
+          filename: req.file.filename,
+        });
+      }
+    } catch (error) {
+      console.error('Error al subir a Cloudinary, cayendo en fallback de almacenamiento local:', error);
+    }
+  }
+
+  // Fallback: Retornar la ruta local para acceder al archivo
   const imageUrl = `/uploads/${req.file.filename}`;
   return res.status(201).json({
-    message: 'Imagen subida correctamente.',
+    message: 'Imagen subida localmente.',
     imageUrl,
     filename: req.file.filename,
   });

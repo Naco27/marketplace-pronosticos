@@ -47,11 +47,7 @@ export default function Dashboard() {
   // Admin Approval dialog state
   const [referenceCodeMap, setReferenceCodeMap] = useState<{ [key: string]: string }>({});
 
-  const API_URL = {
-    toString() {
-      return getAPI_URL();
-    }
-  } as unknown as string;
+  const API_URL = getAPI_URL();
 
   useEffect(() => {
     if (!user) {
@@ -208,7 +204,7 @@ export default function Dashboard() {
         });
         const uploadData = await uploadRes.json();
         if (uploadRes.ok) {
-          finalImageUrl = `${getBaseUrl()}${uploadData.imageUrl}`;
+          finalImageUrl = uploadData.imageUrl.startsWith('http') ? uploadData.imageUrl : `${getBaseUrl()}${uploadData.imageUrl}`;
         } else {
           alert('Error al subir la imagen: ' + (uploadData.error || 'Error desconocido'));
           setDashboardLoading(false);

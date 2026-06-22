@@ -60,7 +60,7 @@ interface PredictionState {
 
   checkout: (
     predictionId: string,
-    paymentMethod: 'STRIPE' | 'PAYPAL' | 'YAPE' | 'PLIN' | 'FREE_BET',
+    paymentMethod: 'BINANCE' | 'YAPE' | 'PLIN' | 'FREE_BET',
     token: string | null,
     guestEmail?: string
   ) => Promise<{ paymentUrl?: string; instructions?: string; purchaseId?: string }>;
@@ -76,11 +76,7 @@ interface PredictionState {
   fetchPendingPayments: (token: string) => Promise<void>;
 }
 
-const API_URL = {
-  toString() {
-    return getAPI_URL();
-  }
-} as unknown as string;
+const API_URL = getAPI_URL();
 
 export const usePredictionStore = create<PredictionState>((set, get) => ({
   predictions: [],
@@ -91,7 +87,6 @@ export const usePredictionStore = create<PredictionState>((set, get) => ({
   error: null,
 
   fetchPredictions: async (filters) => {
-    console.log('[DEBUG] fetchPredictions called. API_URL:', API_URL.toString());
     // SWR: Solo activar loading si no hay predicciones previas en el store
     const currentPredictions = get().predictions;
     const shouldShowSkeleton = currentPredictions.length === 0;
@@ -114,19 +109,15 @@ export const usePredictionStore = create<PredictionState>((set, get) => ({
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const fetchUrl = `${API_URL}/predictions?${queryParams.toString()}`;
-      console.log('[DEBUG] fetchPredictions fetching from:', fetchUrl);
-      const response = await fetch(fetchUrl, { headers });
+      const response = await fetch(`${API_URL}/predictions?${queryParams.toString()}`, { headers });
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch predictions');
       }
 
-      console.log('[DEBUG] fetchPredictions success. Predictions count:', data.predictions.length);
       set({ predictions: data.predictions, loading: false });
     } catch (err: any) {
-      console.error('[DEBUG] fetchPredictions error:', err);
       set({ error: err.message, loading: false });
     }
   },

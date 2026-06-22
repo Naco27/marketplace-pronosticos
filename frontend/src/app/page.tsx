@@ -11,11 +11,7 @@ import {
 } from 'lucide-react';
 import { getAPI_URL, getBaseUrl } from '@/utils/config';
 
-const API_URL = {
-  toString() {
-    return getAPI_URL();
-  }
-} as unknown as string;
+const API_URL = getAPI_URL();
 
 function TimeUntil({ date, onExpired }: { date: string; onExpired?: () => void }) {
   const [label, setLabel] = useState('');
@@ -47,7 +43,7 @@ function TimeUntil({ date, onExpired }: { date: string; onExpired?: () => void }
   return <span>{label}</span>;
 }
 
-type PayMethod = 'YAPE' | 'PLIN' | 'STRIPE' | 'PAYPAL' | 'FREE_BET';
+type PayMethod = 'YAPE' | 'PLIN' | 'BINANCE' | 'FREE_BET';
 
 // ── Yape Modal ────────────────────────────────────────────
 function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onClose }: {
@@ -60,10 +56,34 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
   const [refCode, setRefCode] = useState('');
 
   const isYape = method === 'YAPE';
-  const headerBg = isYape ? 'bg-[#611F8C]' : 'bg-[#00a896]';
-  const methodLabel = isYape ? 'Yape' : 'Plin';
-  const methodLogo = isYape ? 'Y' : 'P';
-  const actionText = isYape ? 'yapear' : 'plinear';
+  const isPlin = method === 'PLIN';
+  const isBinance = method === 'BINANCE';
+
+  let headerBg = 'bg-[#611F8C]';
+  let methodLabel = 'Yape';
+  let methodLogo = 'Y';
+  let actionText = 'yapear';
+  let recipientName = 'Brajhan Jhoel Sandoval Duran';
+  let recipientDetail = '912966742';
+  let qrPath = '/yape-qr.png';
+
+  if (isPlin) {
+    headerBg = 'bg-[#00a896]';
+    methodLabel = 'Plin';
+    methodLogo = 'P';
+    actionText = 'plinear';
+  } else if (isBinance) {
+    headerBg = 'bg-[#F0B90B]';
+    methodLabel = 'Binance Pay';
+    methodLogo = 'B';
+    actionText = 'transferir a';
+    recipientName = 'Sandoval Duran';
+    recipientDetail = 'Pay ID: 258963147';
+    qrPath = '/binance-qr.png';
+  }
+
+  const headerText = isBinance ? 'text-slate-950' : 'text-white';
+  const subHeaderText = isBinance ? 'text-slate-800' : 'text-purple-200';
 
   const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -93,7 +113,7 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
       });
       const uploadData = await uploadRes.json();
       if (uploadRes.ok) {
-        finalScreenshotUrl = `${getBaseUrl()}${uploadData.imageUrl}`;
+        finalScreenshotUrl = uploadData.imageUrl.startsWith('http') ? uploadData.imageUrl : `${getBaseUrl()}${uploadData.imageUrl}`;
       } else {
         alert('Error al subir la captura de pago: ' + (uploadData.error || 'Error desconocido'));
         setLoading(false);
@@ -123,20 +143,20 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-t-3xl overflow-hidden shadow-2xl bg-white max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className={`${headerBg} px-5 pt-5 pb-4 text-white shrink-0`}>
-          <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/30" />
+        <div className={`${headerBg} ${headerText} px-5 pt-5 pb-4 shrink-0`}>
+          <div className="mx-auto mb-4 h-1 w-10 bg-black/10 rounded-full" />
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className={`h-9 w-9 rounded-full bg-white flex items-center justify-center font-black text-lg ${isYape ? 'text-[#611F8C]' : 'text-[#00a896]'}`}>
+              <div className={`h-9 w-9 rounded-full bg-white flex items-center justify-center font-black text-lg ${isYape ? 'text-[#611F8C]' : isPlin ? 'text-[#00a896]' : 'text-[#F0B90B]'}`}>
                 {methodLogo}
               </div>
               <span className="font-bold text-base">Pagar con {methodLabel}</span>
             </div>
-            <button onClick={onClose} className="text-white/50 hover:text-white text-xl">✕</button>
+            <button onClick={onClose} className="hover:opacity-80 text-xl">✕</button>
           </div>
-          <p className="text-xs text-purple-200 uppercase tracking-widest font-semibold">Vas a {actionText} a</p>
-          <p className="text-lg font-extrabold mt-0.5">Brajhan Jhoel Sandoval Duran</p>
-          <p className="text-sm text-purple-200">912966742</p>
+          <p className={`text-xs uppercase tracking-widest font-semibold ${subHeaderText}`}>Vas a {actionText}</p>
+          <p className="text-lg font-extrabold mt-0.5">{recipientName}</p>
+          <p className="text-sm font-bold">{recipientDetail}</p>
         </div>
 
         {/* Content (Scrollable) */}
@@ -150,11 +170,11 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
           {/* QR code and download */}
           <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/yape-qr.png" alt={`${methodLabel} QR`} className="w-40 h-auto object-contain rounded-lg shadow-sm animate-fade-in" />
+            <img src={qrPath} alt={`${methodLabel} QR`} className="w-40 h-auto object-contain rounded-lg shadow-sm animate-fade-in" />
             <p className="text-[10px] text-gray-500 mt-2 font-semibold text-center">Escanea el código QR desde tu app {methodLabel}</p>
-            <a href="/yape-qr.png" download={`${methodLabel.toLowerCase()}-qr.png`} 
-              className={`mt-3 flex items-center justify-center gap-2 text-xs text-white px-4 py-2 rounded-xl font-bold transition w-full shadow-sm ${
-                isYape ? 'bg-[#611F8C] hover:bg-[#521a75]' : 'bg-[#00a896] hover:bg-[#008f7f]'
+            <a href={qrPath} download={`${methodLabel.toLowerCase()}-qr.png`} 
+              className={`mt-3 flex items-center justify-center gap-2 text-xs px-4 py-2 rounded-xl font-bold transition w-full shadow-sm ${
+                isYape ? 'bg-[#611F8C] hover:bg-[#521a75] text-white' : isPlin ? 'bg-[#00a896] hover:bg-[#008f7f] text-white' : 'bg-[#F0B90B] hover:bg-[#d6a40a] text-slate-950'
               }`}>
               <Upload className="h-3.5 w-3.5 rotate-180" />
               Descargar código QR
@@ -165,7 +185,7 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
           <div className="space-y-2">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Adjuntar captura de pago *</label>
             <div className={`relative border-2 border-dashed rounded-2xl overflow-hidden bg-gray-50 min-h-[110px] flex items-center justify-center transition ${
-              isYape ? 'border-gray-300 hover:border-[#611F8C]' : 'border-gray-300 hover:border-[#00a896]'
+              isYape ? 'border-gray-300 hover:border-[#611F8C]' : isPlin ? 'border-gray-300 hover:border-[#00a896]' : 'border-gray-300 hover:border-[#F0B90B]'
             }`}>
               {screenshotPreview ? (
                 <div className="relative w-full p-2 flex flex-col items-center">
@@ -189,21 +209,23 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
 
           {/* Optional Ref code */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Código de referencia (Opcional)</label>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Código de referencia / hash transacción (Opcional)</label>
             <input type="text" placeholder="Ej: 19842859" value={refCode} onChange={(e) => setRefCode(e.target.value)}
               className={`w-full rounded-xl bg-gray-50 border border-gray-200 p-3 text-sm text-gray-800 focus:outline-none transition ${
-                isYape ? 'focus:border-[#611F8C]' : 'focus:border-[#00a896]'
+                isYape ? 'focus:border-[#611F8C]' : isPlin ? 'focus:border-[#00a896]' : 'focus:border-[#F0B90B]'
               }`} />
           </div>
 
           <button onClick={handleYape} disabled={loading || !screenshotFile}
-            className={`w-full py-3.5 rounded-2xl text-white font-extrabold text-base transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg ${
+            className={`w-full py-3.5 rounded-2xl font-extrabold text-base transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg ${
               isYape 
-                ? 'bg-[#611F8C] hover:bg-[#7a2db0] shadow-purple-900/30' 
-                : 'bg-[#00a896] hover:bg-[#00cbb5] shadow-teal-900/30'
+                ? 'bg-[#611F8C] hover:bg-[#7a2db0] text-white shadow-purple-900/30' 
+                : isPlin 
+                  ? 'bg-[#00a896] hover:bg-[#00cbb5] text-white shadow-teal-900/30'
+                  : 'bg-[#F0B90B] hover:bg-[#d6a40a] text-slate-950 shadow-yellow-900/20'
             }`}>
             {loading ? (
-              <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
               </svg>
@@ -219,8 +241,7 @@ function YapeModal({ prediction, purchaseId, accessToken, method, onSuccess, onC
 const METHODS: { id: PayMethod; label: string; icon: string }[] = [
   { id: 'YAPE', label: 'Yape', icon: '💜' },
   { id: 'PLIN', label: 'Plin', icon: '🟢' },
-  { id: 'STRIPE', label: 'Tarjeta', icon: '💳' },
-  { id: 'PAYPAL', label: 'PayPal', icon: '🅿️' },
+  { id: 'BINANCE', label: 'Binance', icon: '🟡' },
 ];
 
 function CheckoutModal({ prediction, onClose }: { prediction: Prediction; onClose: () => void }) {
@@ -238,7 +259,7 @@ function CheckoutModal({ prediction, onClose }: { prediction: Prediction; onClos
     try {
       const result = await store.checkout(prediction.id, method, accessToken);
       setPurchaseId(result.purchaseId || '');
-      if (method === 'YAPE' || method === 'PLIN') {
+      if (method === 'YAPE' || method === 'PLIN' || method === 'BINANCE') {
         setStep('YAPE');
       } else if (method === 'FREE_BET') {
         // Decrement local freeBetsCount immediately for a fluid experience
@@ -274,7 +295,7 @@ function CheckoutModal({ prediction, onClose }: { prediction: Prediction; onClos
   }
 
   if (step === 'SUCCESS') {
-    const isManual = method === 'YAPE' || method === 'PLIN';
+    const isManual = method === 'YAPE' || method === 'PLIN' || method === 'BINANCE';
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
         <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl">
@@ -355,7 +376,7 @@ function CheckoutModal({ prediction, onClose }: { prediction: Prediction; onClos
             </button>
           )}
 
-          <div className="grid grid-cols-4 gap-2 mb-5">
+          <div className="grid grid-cols-3 gap-2 mb-5">
             {METHODS.map((m) => (
               <button key={m.id} onClick={() => setMethod(m.id)}
                 className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-all press ${

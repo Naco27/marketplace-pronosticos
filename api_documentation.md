@@ -109,46 +109,46 @@ Esta es la especificación técnica de la API de BetMarket. Todos los endpoints 
 
 ### 1. Iniciar Checkout
 *   **Endpoint:** `POST /purchases/checkout`
-*   **Headers:** `Authorization: Bearer <accessToken>`
+*   **Headers:** `Authorization: Bearer <accessToken>` (Opcional)
 *   **Cuerpo (JSON):**
     ```json
     {
       "predictionId": "prediction-uuid",
-      "paymentMethod": "STRIPE" // "STRIPE", "PAYPAL", "YAPE", "PLIN"
+      "paymentMethod": "BINANCE" // "BINANCE", "YAPE", "PLIN"
     }
     ```
-*   **Respuesta (Stripe/PayPal):** Retorna la URL de redirección a la simulación.
-*   **Respuesta (Yape/Plin):** Retorna las instrucciones del pago y el código QR asignado.
+*   **Respuesta (Yape/Plin/Binance):** Retorna las instrucciones de transferencia y QR correspondiente.
 
-### 2. Simular Transacción Exitosa (Pruebas)
+### 2. Simular Transacción Exitosa (Pruebas / Mock)
 *   **Endpoint:** `POST /purchases/simulate-success`
 *   **Cuerpo (JSON):**
     ```json
     {
       "purchaseId": "purchase-uuid",
-      "transactionId": "mock-stripe-transaction-id"
+      "transactionId": "mock-transaction-id"
     }
     ```
-*   **Acción:** Completa la orden, deduce 10% de comisión de la plataforma e incrementa el saldo del Tipster.
+*   **Acción:** Completa la orden simulando éxito directo (para entornos de pruebas locales), deduce el 10% de comisión de la plataforma e incrementa el saldo del Tipster.
 
-### 3. Enviar Comprobante (Yape/Plin)
+### 3. Enviar Comprobante (Yape/Plin/Binance)
 *   **Endpoint:** `POST /purchases/submit-proof`
 *   **Cuerpo (JSON):**
     ```json
     {
       "purchaseId": "purchase-uuid",
-      "referenceCode": "19842859"
+      "referenceCode": "19842859",
+      "screenshotUrl": "https://url-imagen-cloudinary.com/comprobante.png"
     }
     ```
 
-### 4. Aprobar Pago Manual (Admin únicamente)
+### 4. Aprobar Pago Manual (Admin / Tipster)
 *   **Endpoint:** `POST /purchases/approve-manual`
 *   **Headers:** `Authorization: Bearer <accessToken>`
 *   **Cuerpo (JSON):**
     ```json
     {
       "purchaseId": "purchase-uuid",
-      "paymentMethod": "YAPE",
+      "paymentMethod": "BINANCE",
       "referenceCode": "19842859"
     }
     ```

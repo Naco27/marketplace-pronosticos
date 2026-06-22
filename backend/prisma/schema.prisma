@@ -1,5 +1,5 @@
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -52,17 +52,19 @@ model Prediction {
 }
 
 model Purchase {
-  id           String       @id @default(uuid())
-  punterId     String?
-  punter       User?        @relation("PunterPurchases", fields: [punterId], references: [id], onDelete: Cascade)
-  guestEmail   String?
-  predictionId String
-  prediction   Prediction   @relation(fields: [predictionId], references: [id], onDelete: Cascade)
-  amountPaid   Float
-  status       String       @default("PENDING") // "PENDING", "COMPLETED", "FAILED"
+  id            String       @id @default(uuid())
+  punterId      String?
+  punter        User?        @relation("PunterPurchases", fields: [punterId], references: [id], onDelete: Cascade)
+  guestEmail    String?
+  predictionId  String
+  prediction    Prediction   @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  amountPaid    Float
+  status        String       @default("PENDING") // "PENDING", "COMPLETED", "FAILED"
+  paymentMethod String?      // "BINANCE", "YAPE", "PLIN"
   screenshotUrl String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  referenceCode String?      // Código/hash de referencia de la transferencia
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   
   transaction  Transaction?
 }
@@ -71,7 +73,7 @@ model Transaction {
   id               String   @id @default(uuid())
   purchaseId       String   @unique
   purchase         Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  paymentMethod    String   // "STRIPE", "PAYPAL", "YAPE", "PLIN"
+  paymentMethod    String   // "BINANCE", "YAPE", "PLIN", "FREE_BET"
   paymentGatewayId String?  // ID de la transacción en la pasarela o referencia manual
   amount           Float
   platformFee      Float

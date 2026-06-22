@@ -12,7 +12,7 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Prediction ID and payment method are required.' });
     }
 
-    if (!['STRIPE', 'PAYPAL', 'YAPE', 'PLIN', 'FREE_BET'].includes(paymentMethod)) {
+    if (!['BINANCE', 'YAPE', 'PLIN', 'FREE_BET'].includes(paymentMethod)) {
       return res.status(400).json({ error: 'Invalid payment method.' });
     }
 
@@ -116,6 +116,7 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
         guestEmail: guestEmail || null,
         predictionId,
         amountPaid: prediction.price,
+        paymentMethod,
         status: 'PENDING',
       },
     });
@@ -124,17 +125,12 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
     let paymentUrl = '';
     let instructions = '';
 
-    if (paymentMethod === 'STRIPE' || paymentMethod === 'PAYPAL') {
-      // In production, instantiate Stripe or PayPal session and get checkout URL
-      // For now, return a mock redirect URL that simulation handles
-      paymentUrl = `/checkout/simulate-payment?purchaseId=${purchase.id}&method=${paymentMethod}`;
-    } else {
-      // Yape or Plin
-      if (paymentMethod === 'YAPE') {
-        instructions = `Por favor realiza un pago de S/. ${prediction.price.toFixed(2)} escaneando el código QR o ingresando al número 912966742 (Brajhan Jhoel Sandoval Duran). Al presionar el botón de confirmación, tu pago se procesará y desbloqueará el pick automáticamente al instante.`;
-      } else {
-        instructions = `Por favor realiza un pago por S/. ${prediction.price.toFixed(2)} a Plin al número 912966742 (Brajhan Jhoel Sandoval Duran).`;
-      }
+    if (paymentMethod === 'YAPE') {
+      instructions = `Por favor realiza un pago de S/. ${prediction.price.toFixed(2)} escaneando el código QR de Yape o ingresando al número de teléfono 912966742 (Brajhan Jhoel Sandoval Duran). Sube el comprobante de pago para su verificación.`;
+    } else if (paymentMethod === 'PLIN') {
+      instructions = `Por favor realiza un pago de S/. ${prediction.price.toFixed(2)} escaneando el código QR de Plin o ingresando al número de teléfono 912966742 (Brajhan Jhoel Sandoval Duran). Sube el comprobante de pago para su verificación.`;
+    } else if (paymentMethod === 'BINANCE') {
+      instructions = `Por favor realiza el envío de USDT/BUSD equivalente a S/. ${prediction.price.toFixed(2)} a nuestra Binance Pay ID: 258963147. Sube la captura de pantalla e ingresa el código de referencia/Hash de la transacción para su verificación.`;
     }
 
     return res.status(201).json({
@@ -150,7 +146,7 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
   }
 };
 
-// Simulation endpoint to confirm Stripe/PayPal payments instantly for testing
+// Simulation endpoint to confirm payments instantly for testing (non-production)
 export const simulatePaymentSuccess = async (req: Request, res: Response) => {
   try {
     const { purchaseId, transactionId } = req.body;
@@ -181,7 +177,7 @@ export const simulatePaymentSuccess = async (req: Request, res: Response) => {
       await tx.transaction.create({
         data: {
           purchaseId,
-          paymentMethod: 'STRIPE',
+          paymentMethod: purchase.paymentMethod || 'MANUAL',
           paymentGatewayId: transactionId || `sim_${Math.random().toString(36).substr(2, 9)}`,
           amount: purchase.amountPaid,
           platformFee,
@@ -201,7 +197,7 @@ export const simulatePaymentSuccess = async (req: Request, res: Response) => {
   }
 };
 
-// For Yape/Plin, Apostador submits receipt/reference code and screenshot
+// For Yape/Plin/Binance, Apostador submits receipt/reference code and screenshot
 export const submitManualPaymentProof = async (req: Request, res: Response) => {
   try {
     const { purchaseId, referenceCode, screenshotUrl } = req.body;
@@ -228,7 +224,7 @@ export const submitManualPaymentProof = async (req: Request, res: Response) => {
       where: { id: purchaseId },
       data: {
         screenshotUrl,
-        // Save the reference code too if they provided it
+        referenceCode: referenceCode || null,
         status: 'PENDING',
       },
     });
@@ -467,3 +463,5 @@ export const getSalesHistory = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Internal server error.' });
   }
 };
+
+
