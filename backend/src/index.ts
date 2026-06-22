@@ -24,7 +24,7 @@ const allowedOrigins = [
 ].filter((url): url is string => !!url);
 
 app.use(cors({
-  origin: (origin, callback) => {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Permitir en desarrollo local o si el origen está en la lista blanca
     if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
       callback(null, true);

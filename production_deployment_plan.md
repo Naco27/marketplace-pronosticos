@@ -44,9 +44,9 @@ El backend se puede hospedar de forma gratuita en plataformas como **Render** o 
    * Inicia sesión en [Render](https://render.com/).
    * Presiona **New +** y selecciona **Web Service**.
    * Conecta tu repositorio de GitHub y selecciona la carpeta `backend` como el directorio raíz (**Root Directory**: `backend`).
-3. **Configurar parámetros del Web Service:**
+ 3. **Configurar parámetros del Web Service:**
    * **Runtime:** `Node`
-   * **Build Command:** `npm install && npm run build`
+   * **Build Command:** `npm install --production=false && npm run build`
    * **Start Command:** `npm run start`
 4. **Configurar Variables de Entorno (Environment Variables):**
    Agrega las siguientes variables en la sección de configuración (**Environment**) de Render:
@@ -62,7 +62,7 @@ El backend se puede hospedar de forma gratuita en plataformas como **Render** o 
 5. **Ejecutar Migraciones de Producción:**
    * Para aplicar automáticamente las migraciones en la base de datos de producción durante el despliegue sin interacción en la terminal, configura el **Build Command** en Render como:
      ```bash
-     npm install && npm run build && npx prisma migrate deploy
+     npm install --production=false && npm run build && npx prisma db push
      ```
 
 ---
