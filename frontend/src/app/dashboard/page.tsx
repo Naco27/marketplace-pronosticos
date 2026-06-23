@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePredictionStore, Prediction } from '@/store/usePredictionStore';
 import { useRouter } from 'next/navigation';
-import { PlusCircle, ShieldAlert, Award, Calendar, DollarSign, Wallet, FileText, Check, X, Upload, Image, Clock, ChevronDown } from 'lucide-react';
+import { PlusCircle, ShieldAlert, Award, Calendar, DollarSign, Wallet, FileText, Check, X, Upload, Image, Clock, ChevronDown, Edit3, Trash2 } from 'lucide-react';
 import { getAPI_URL, getBaseUrl } from '@/utils/config';
 
 export default function Dashboard() {
   const { user, accessToken } = useAuthStore();
-  const { fetchPredictions, createPrediction, resolvePrediction, approveManualPayment } = usePredictionStore();
+  const { fetchPredictions, createPrediction, resolvePrediction, approveManualPayment, updatePrediction, deletePrediction } = usePredictionStore();
   const router = useRouter();
 
   // Common State
@@ -43,6 +43,7 @@ export default function Dashboard() {
   const [isFixed] = useState(true);
   const [availableUntilHour, setAvailableUntilHour] = useState('18');
   const [availableUntilMinute, setAvailableUntilMinute] = useState('30');
+  const [editingPick, setEditingPick] = useState<Prediction | null>(null);
 
   // Admin Approval dialog state
   const [referenceCodeMap, setReferenceCodeMap] = useState<{ [key: string]: string }>({});
@@ -273,16 +274,88 @@ export default function Dashboard() {
 
   const handleResolvePick = async (id: string, result: 'WON' | 'LOST' | 'VOID') => {
     if (!accessToken) return;
-    if (!confirm(`¿Estás seguro de marcar esta apuesta como ${result}?`)) return;
+
+    // Save previous state for optimistic updates rollback
+    const previousPicks = [...publishedPicks];
+    const previousUser = user ? { ...user } : null;
+
+    // 1. Optimistically update local predictions state
+    setPublishedPicks(prev => prev.map(p => {
+      if (p.id === id) {
+        return { ...p, isCompleted: true, result };
+      }
+      return p;
+    }));
+
+    // 2. Optimistically recalculate tipster stats for instant UI feedback
+    if (user && user.stats) {
+      const updatedPicks = publishedPicks.map(p => p.id === id ? { ...p, isCompleted: true, result } : p);
+      const completed = updatedPicks.filter(p => p.isCompleted);
+      const totalPredictions = completed.length;
+      const wonPredictions = completed.filter(p => p.result === 'WON').length;
+      
+      let totalStake = 0;
+      let totalProfit = 0;
+      for (const p of completed) {
+        totalStake += p.stake;
+        if (p.result === 'WON') {
+          totalProfit += p.stake * (p.odds - 1);
+        } else if (p.result === 'LOST') {
+          totalProfit -= p.stake;
+        }
+      }
+      const yieldPercentage = totalStake > 0 ? (totalProfit / totalStake) * 100 : 0;
+      
+      useAuthStore.setState({
+        user: {
+          ...user,
+          stats: {
+            ...user.stats,
+            totalPredictions,
+            wonPredictions,
+            profit: parseFloat(totalProfit.toFixed(2)),
+            yield: parseFloat(yieldPercentage.toFixed(2)),
+          }
+        }
+      });
+    }
+
+    try {
+      const success = await resolvePrediction(id, result, accessToken);
+      if (!success) throw new Error('Api resolution failed');
+      
+      // Silently sync the latest data from server in the background
+      loadTipsterData();
+      
+      const profileRes = await fetch(`${API_URL}/auth/profile`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const profileData = await profileRes.json();
+      if (profileRes.ok) {
+        useAuthStore.setState({ user: profileData.user });
+      }
+    } catch (err) {
+      console.error(err);
+      // Revert state on error
+      setPublishedPicks(previousPicks);
+      if (previousUser) {
+        useAuthStore.setState({ user: previousUser });
+      }
+      alert('Error al resolver la apuesta. Se ha revertido el cambio.');
+    }
+  };
+
+  const handleDeletePick = async (id: string) => {
+    if (!accessToken) return;
+    if (!confirm('¿Estás seguro de eliminar este pronóstico permanentemente? Esta acción borrará todas las compras y transacciones asociadas.')) return;
 
     setDashboardLoading(true);
-    const success = await resolvePrediction(id, result, accessToken);
+    const success = await deletePrediction(id, accessToken);
     setDashboardLoading(false);
-    
+
     if (success) {
-      alert('Pronóstico resuelto con éxito.');
       loadTipsterData();
-      // Also update auth state user statistics since they changed!
+      // Update stats
       const profileRes = await fetch(`${API_URL}/auth/profile`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -291,7 +364,7 @@ export default function Dashboard() {
         useAuthStore.setState({ user: profileData.user });
       }
     } else {
-      alert('Error al resolver la apuesta.');
+      alert('Error al eliminar el pronóstico.');
     }
   };
 
@@ -485,22 +558,42 @@ export default function Dashboard() {
                       </div>
 
                       {/* Footer */}
-                      <div className="mt-4 pt-3 border-t border-slate-800/50 flex justify-between items-center">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                          pick.isCompleted 
-                            ? pick.result === 'WON' 
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                              : pick.result === 'LOST' 
-                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
-                                : 'bg-slate-800 text-slate-400 border-slate-700' 
-                            : isLive
-                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                              : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
-                        }`}>
-                          {pick.isCompleted 
-                            ? `${pick.result === 'WON' ? '🏆' : pick.result === 'LOST' ? '❌' : '↩️'} ${pick.result}` 
-                            : isLive ? '🔥 En Juego' : '⏳ Pendiente'}
-                        </span>
+                      <div className="mt-4 pt-3 border-t border-slate-800/50 flex flex-wrap justify-between items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                            pick.isCompleted 
+                              ? pick.result === 'WON' 
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                : pick.result === 'LOST' 
+                                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
+                                  : 'bg-slate-800 text-slate-400 border-slate-700' 
+                              : isLive
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                          }`}>
+                            {pick.isCompleted 
+                              ? `${pick.result === 'WON' ? '🏆' : pick.result === 'LOST' ? '❌' : '↩️'} ${pick.result}` 
+                              : isLive ? '🔥 En Juego' : '⏳ Pendiente'}
+                          </span>
+
+                          {/* Quick Edit/Delete buttons */}
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setEditingPick(pick)}
+                              className="p-1.5 rounded-lg text-slate-450 hover:text-white hover:bg-slate-800 transition"
+                              title="Editar pronóstico"
+                            >
+                              <Edit3 className="h-3.5 w-3.5 text-slate-400" />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePick(pick.id)}
+                              className="p-1.5 rounded-lg text-slate-450 hover:text-red-400 hover:bg-red-500/10 transition"
+                              title="Eliminar pronóstico"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-slate-400 hover:text-red-400" />
+                            </button>
+                          </div>
+                        </div>
 
                         {!pick.isCompleted && (
                           <div className="flex gap-2">
@@ -968,7 +1061,332 @@ export default function Dashboard() {
             </div>
           )}
 
+          {editingPick && (
+            <EditPickModal
+              prediction={editingPick}
+              accessToken={accessToken || ''}
+              onClose={() => setEditingPick(null)}
+              onSuccess={() => {
+                setEditingPick(null);
+                loadTipsterData();
+              }}
+            />
+          )}
         </div>
       </div>
+  );
+}
+
+// Edit Pick Modal subcomponent
+interface EditPickModalProps {
+  prediction: Prediction;
+  onClose: () => void;
+  onSuccess: () => void;
+  accessToken: string;
+}
+
+function EditPickModal({ prediction, onClose, onSuccess, accessToken }: EditPickModalProps) {
+  const [sport, setSport] = useState(prediction.sport);
+  const [league, setLeague] = useState(prediction.league || '');
+  const [odds, setOdds] = useState(prediction.odds.toString());
+  const [stake, setStake] = useState(prediction.stake.toString());
+  const [price, setPrice] = useState(prediction.price.toString());
+  const [description, setDescription] = useState(prediction.description);
+  const [argumentation, setArgumentation] = useState(prediction.argumentation || '');
+  const [betLink, setBetLink] = useState(prediction.betLink || '');
+  const [imageUrl, setImageUrl] = useState(prediction.imageUrl || '');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(prediction.imageUrl || null);
+  const [loading, setLoading] = useState(false);
+  const [isFixed] = useState(prediction.isFixed);
+
+  // Time handling
+  const initialDate = prediction.availableUntil ? new Date(prediction.availableUntil) : new Date(prediction.eventDate);
+  const [availableUntilHour, setAvailableUntilHour] = useState(String(initialDate.getHours()));
+  const [availableUntilMinute, setAvailableUntilMinute] = useState(String(initialDate.getMinutes()).padStart(2, '0'));
+
+  const API_URL = getAPI_URL();
+  const { updatePrediction } = usePredictionStore();
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const getAvailableUntilDateTime = (hourStr: string, minuteStr: string) => {
+    const now = new Date();
+    const expHour = parseInt(hourStr, 10);
+    const expMin = parseInt(minuteStr, 10);
+    
+    const expDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), expHour, expMin, 0, 0);
+    if (expDate.getTime() <= now.getTime() + 60_000) {
+      expDate.setDate(expDate.getDate() + 1);
+    }
+    
+    const tzOffset = -expDate.getTimezoneOffset();
+    const tzSign = tzOffset >= 0 ? '+' : '-';
+    const tzHours = String(Math.floor(Math.abs(tzOffset) / 60)).padStart(2, '0');
+    const tzMins = String(Math.abs(tzOffset) % 60).padStart(2, '0');
+    
+    const year = expDate.getFullYear();
+    const month = String(expDate.getMonth() + 1).padStart(2, '0');
+    const day = String(expDate.getDate()).padStart(2, '0');
+    const hour = String(expDate.getHours()).padStart(2, '0');
+    const minute = String(expDate.getMinutes()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hour}:${minute}:00${tzSign}${tzHours}:${tzMins}`;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    let finalImageUrl = imageUrl;
+    if (imageFile) {
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      try {
+        const uploadRes = await fetch(`${API_URL}/upload/image`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (uploadRes.ok) {
+          finalImageUrl = uploadData.imageUrl.startsWith('http') ? uploadData.imageUrl : `${getBaseUrl()}${uploadData.imageUrl}`;
+        } else {
+          alert('Error al subir la imagen: ' + (uploadData.error || 'Error desconocido'));
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Upload error:', err);
+        alert('Error de conexión al subir la imagen.');
+        setLoading(false);
+        return;
+      }
+    }
+
+    const deadline = isFixed ? getAvailableUntilDateTime(availableUntilHour, availableUntilMinute) : null;
+
+    const success = await updatePrediction(prediction.id, {
+      sport,
+      league,
+      eventDate: deadline || new Date().toISOString(),
+      odds: parseFloat(odds),
+      stake: parseFloat(stake),
+      price: parseFloat(price),
+      description,
+      imageUrl: finalImageUrl,
+      argumentation,
+      betLink,
+      isFixed,
+      availableUntil: deadline,
+    }, accessToken);
+
+    setLoading(false);
+    if (success) {
+      onSuccess();
+    } else {
+      alert('Error al actualizar el pick.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto text-left">
+      <div className="w-full max-w-lg bg-[#0b1120] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-8 animate-fade-in">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+          <h3 className="text-base font-extrabold text-white font-sans">Editar Pronóstico</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white transition p-1">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Scrollable Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Deporte */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Deporte</label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {['Fútbol', 'Básquetbol', 'Tenis', 'UFC', 'Otros'].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSport(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    sport === s ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Liga */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Liga / Evento</label>
+            <input
+              type="text"
+              required
+              value={league}
+              onChange={(e) => setLeague(e.target.value)}
+              placeholder="Ej: Champions League, La Liga..."
+              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+            />
+          </div>
+
+          {/* Cuota, Stake y Precio */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Cuota</label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={odds}
+                onChange={(e) => setOdds(e.target.value)}
+                placeholder="1.90"
+                className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Stake</label>
+              <select
+                value={stake}
+                onChange={(e) => setStake(e.target.value)}
+                className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+              >
+                {[...Array(10)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {i + 1}/10
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Precio (S/.)</label>
+              <input
+                type="number"
+                step="0.1"
+                required
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="20"
+                className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+              />
+            </div>
+          </div>
+
+          {/* Descripción / Pronóstico */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Detalle del Pronóstico</label>
+            <textarea
+              required
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Ej: Real Madrid gana y ambos anotan..."
+              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition resize-none"
+            />
+          </div>
+
+          {/* Argumentación / Análisis */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Análisis (Opcional)</label>
+            <textarea
+              rows={3}
+              value={argumentation}
+              onChange={(e) => setArgumentation(e.target.value)}
+              placeholder="Justificación del pick..."
+              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition resize-none"
+            />
+          </div>
+
+          {/* Link de la apuesta */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Link de la apuesta</label>
+            <input
+              type="url"
+              value={betLink}
+              onChange={(e) => setBetLink(e.target.value)}
+              placeholder="https://miapuesta.com/abc123"
+              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 p-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+            />
+          </div>
+
+          {/* Imagen */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider block mb-1">Imagen de Referencia</label>
+            <div className="border border-slate-800 rounded-xl p-3 bg-slate-900/50 flex flex-col items-center justify-center min-h-[100px]">
+              {imagePreview ? (
+                <div className="relative">
+                  <img src={imagePreview} alt="Preview" className="max-h-36 rounded-lg object-contain" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageFile(null);
+                      setImagePreview(null);
+                      setImageUrl('');
+                    }}
+                    className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 shadow flex items-center justify-center"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="cursor-pointer text-center py-4 w-full block">
+                  <span className="text-xs text-slate-450 hover:text-white transition">Subir imagen</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
+                </label>
+              )}
+            </div>
+          </div>
+
+          {/* Disponible hasta */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Disponible hasta (hora)</label>
+            <div className="mt-1 flex gap-2">
+              <select
+                value={availableUntilHour}
+                onChange={(e) => setAvailableUntilHour(e.target.value)}
+                className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition flex-1"
+              >
+                {[...Array(24)].map((_, i) => (
+                  <option key={i} value={i}>
+                    {String(i).padStart(2, '0')} hrs
+                  </option>
+                ))}
+              </select>
+              <select
+                value={availableUntilMinute}
+                onChange={(e) => setAvailableUntilMinute(e.target.value)}
+                className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition flex-1"
+              >
+                {['00', '15', '30', '45'].map((m) => (
+                  <option key={m} value={m}>
+                    {m} min
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 text-slate-950 font-bold text-sm transition"
+          >
+            {loading ? 'Guardando cambios...' : 'Guardar Cambios'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }

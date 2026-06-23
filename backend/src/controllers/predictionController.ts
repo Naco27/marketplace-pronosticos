@@ -185,6 +185,43 @@ export const getPredictionById = async (req: Request, res: Response) => {
   }
 };
 
+// Helper to recalculate stats
+async function recalculateTipsterStats(tx: any, tipsterId: string) {
+  const allCompleted = await tx.prediction.findMany({
+    where: {
+      tipsterId,
+      isCompleted: true,
+    },
+  });
+
+  const totalPredictions = allCompleted.length;
+  const wonPredictions = allCompleted.filter((p: any) => p.result === 'WON').length;
+
+  let totalStake = 0;
+  let totalProfit = 0;
+
+  for (const p of allCompleted) {
+    totalStake += p.stake;
+    if (p.result === 'WON') {
+      totalProfit += p.stake * (p.odds - 1);
+    } else if (p.result === 'LOST') {
+      totalProfit -= p.stake;
+    }
+  }
+
+  const yieldPercentage = totalStake > 0 ? (totalProfit / totalStake) * 100 : 0;
+
+  await tx.tipsterStats.update({
+    where: { tipsterId },
+    data: {
+      totalPredictions,
+      wonPredictions,
+      profit: parseFloat(totalProfit.toFixed(2)),
+      yield: parseFloat(yieldPercentage.toFixed(2)),
+    },
+  });
+}
+
 export const resolvePrediction = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -257,47 +294,124 @@ export const resolvePrediction = async (req: Request, res: Response) => {
       }
 
       // Recalculate Stats
-      const allCompleted = await tx.prediction.findMany({
-        where: {
-          tipsterId: prediction.tipsterId,
-          isCompleted: true,
-        },
-      });
-
-      const totalPredictions = allCompleted.length;
-      const wonPredictions = allCompleted.filter((p) => p.result === 'WON').length;
-
-      // Calculate Profit and Yield
-      // Yield = (Net profit / Total amount staked) * 100
-      let totalStake = 0;
-      let totalProfit = 0;
-
-      for (const p of allCompleted) {
-        totalStake += p.stake;
-        if (p.result === 'WON') {
-          totalProfit += p.stake * (p.odds - 1);
-        } else if (p.result === 'LOST') {
-          totalProfit -= p.stake;
-        }
-        // VOID prediction profit is 0 and is not added/subtracted
-      }
-
-      const yieldPercentage = totalStake > 0 ? (totalProfit / totalStake) * 100 : 0;
-
-      await tx.tipsterStats.update({
-        where: { tipsterId: prediction.tipsterId },
-        data: {
-          totalPredictions,
-          wonPredictions,
-          profit: parseFloat(totalProfit.toFixed(2)),
-          yield: parseFloat(yieldPercentage.toFixed(2)),
-        },
-      });
+      await recalculateTipsterStats(tx, prediction.tipsterId);
     });
 
     return res.status(200).json({ message: 'Prediction resolved successfully and stats updated.' });
   } catch (error) {
     console.error('Error resolving prediction:', error);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+};
+
+export const updatePrediction = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user?.userId;
+    const currentUserRole = req.user?.role;
+
+    if (!currentUserId) {
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
+
+    const prediction = await prisma.prediction.findUnique({
+      where: { id },
+    });
+
+    if (!prediction) {
+      return res.status(404).json({ error: 'Prediction not found.' });
+    }
+
+    // Only Admin or the Tipster who created it can edit it
+    if (prediction.tipsterId !== currentUserId && currentUserRole !== 'ADMIN') {
+      return res.status(403).json({ error: 'Forbidden. You do not own this prediction.' });
+    }
+
+    const {
+      sport,
+      league,
+      eventDate,
+      odds,
+      stake,
+      price,
+      description,
+      imageUrl,
+      argumentation,
+      betLink,
+      isFixed,
+      availableUntil,
+      result,
+      isCompleted,
+    } = req.body;
+
+    const updateData: any = {};
+    if (sport !== undefined) updateData.sport = sport;
+    if (league !== undefined) updateData.league = league;
+    if (eventDate !== undefined) updateData.eventDate = eventDate ? new Date(eventDate) : undefined;
+    if (odds !== undefined) updateData.odds = parseFloat(odds);
+    if (stake !== undefined) updateData.stake = parseFloat(stake);
+    if (price !== undefined) updateData.price = parseFloat(price);
+    if (description !== undefined) updateData.description = description;
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl || null;
+    if (argumentation !== undefined) updateData.argumentation = argumentation || null;
+    if (betLink !== undefined) updateData.betLink = betLink || null;
+    if (isFixed !== undefined) updateData.isFixed = isFixed === true || isFixed === 'true';
+    if (availableUntil !== undefined) updateData.availableUntil = availableUntil ? new Date(availableUntil) : null;
+    if (result !== undefined) updateData.result = result;
+    if (isCompleted !== undefined) updateData.isCompleted = isCompleted === true || isCompleted === 'true';
+
+    await prisma.$transaction(async (tx) => {
+      await tx.prediction.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // Recalculate stats
+      await recalculateTipsterStats(tx, prediction.tipsterId);
+    });
+
+    return res.status(200).json({ message: 'Prediction updated successfully.' });
+  } catch (error) {
+    console.error('Error updating prediction:', error);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+};
+
+export const deletePrediction = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const currentUserId = req.user?.userId;
+    const currentUserRole = req.user?.role;
+
+    if (!currentUserId) {
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
+
+    const prediction = await prisma.prediction.findUnique({
+      where: { id },
+    });
+
+    if (!prediction) {
+      return res.status(404).json({ error: 'Prediction not found.' });
+    }
+
+    // Only Admin or the Tipster who created it can delete it
+    if (prediction.tipsterId !== currentUserId && currentUserRole !== 'ADMIN') {
+      return res.status(403).json({ error: 'Forbidden. You do not own this prediction.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.prediction.delete({
+        where: { id },
+      });
+
+      // Recalculate stats
+      await recalculateTipsterStats(tx, prediction.tipsterId);
+    });
+
+    return res.status(200).json({ message: 'Prediction deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting prediction:', error);
     return res.status(500).json({ error: 'Internal server error.' });
   }
 };

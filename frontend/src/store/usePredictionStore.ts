@@ -71,6 +71,10 @@ interface PredictionState {
   
   resolvePrediction: (id: string, result: 'WON' | 'LOST' | 'VOID', token: string) => Promise<boolean>;
 
+  updatePrediction: (id: string, predictionData: Partial<Prediction>, token: string) => Promise<boolean>;
+
+  deletePrediction: (id: string, token: string) => Promise<boolean>;
+
   fetchPurchasedPicks: (token: string | null) => Promise<void>;
   
   fetchPendingPayments: (token: string) => Promise<void>;
@@ -242,6 +246,44 @@ export const usePredictionStore = create<PredictionState>((set, get) => ({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       // Refresh state
+      get().fetchPredictions();
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
+
+  updatePrediction: async (id, predictionData, token) => {
+    try {
+      const response = await fetch(`${API_URL}/predictions/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(predictionData),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      get().fetchPredictions();
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  },
+
+  deletePrediction: async (id, token) => {
+    try {
+      const response = await fetch(`${API_URL}/predictions/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
       get().fetchPredictions();
       return true;
     } catch (err) {

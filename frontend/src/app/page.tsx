@@ -708,12 +708,12 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
 // ── Main Home ────────────────────────────────────────────
 export default function Home() {
   const { predictions, loading, fetchPredictions } = usePredictionStore();
-  const { user } = useAuthStore();
+  const { user, accessToken } = useAuthStore();
   const [checkoutPred, setCheckoutPred] = useState<Prediction | null>(null);
 
   useEffect(() => {
     fetchPredictions();
-  }, [fetchPredictions]);
+  }, [fetchPredictions, accessToken]);
 
   const liveCount = predictions.filter(p => {
     const expiration = p.availableUntil ? new Date(p.availableUntil) : new Date(p.eventDate);
