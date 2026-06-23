@@ -3,7 +3,13 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePredictionStore } from '@/store/usePredictionStore';
-import { ShoppingBag, Flame, Unlock, Clock, ChevronRight } from 'lucide-react';
+import { ShoppingBag, Flame, Unlock, Clock, ChevronRight, CheckCircle } from 'lucide-react';
+
+const RESULT_CONFIG = {
+  WON:  { emoji: '🏆', badge: '🏆 GANADA',  bannerLabel: '¡Pick GANADOR!',  bannerSub: 'El tipster marcó esta apuesta como ganada.',  bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: 'bg-emerald-500/20' },
+  LOST: { emoji: '❌', badge: '❌ PERDIDA', bannerLabel: 'Pick perdido',     bannerSub: 'El tipster marcó esta apuesta como perdida.', bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    text: 'text-rose-400',    icon: 'bg-rose-500/20' },
+  VOID: { emoji: '↩️', badge: '↩️ ANULADA', bannerLabel: 'Apuesta anulada', bannerSub: 'Esta apuesta fue anulada por el tipster.',    bg: 'bg-slate-800/50',  border: 'border-slate-700',      text: 'text-slate-400',   icon: 'bg-slate-700' },
+} as const;
 
 export default function MisPicks() {
   const { accessToken } = useAuthStore();
@@ -46,8 +52,13 @@ export default function MisPicks() {
           const pick = p.prediction;
           const expirationDate = pick.availableUntil ? new Date(pick.availableUntil) : new Date(pick.eventDate);
           const isLive = (pick.isLive || expirationDate <= new Date()) && !pick.isCompleted;
+          const rc = pick.isCompleted && pick.result && pick.result in RESULT_CONFIG
+            ? RESULT_CONFIG[pick.result as keyof typeof RESULT_CONFIG]
+            : null;
+
           return (
-            <div key={p.id} className="rounded-2xl border border-white/5 bg-slate-900/70 overflow-hidden mb-3">
+            <div key={p.id} className={`rounded-2xl border overflow-hidden mb-3 ${rc ? `${rc.border} bg-slate-900/70` : 'border-white/5 bg-slate-900/70'}`}>
+              {/* Header strip */}
               <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">{pick.sport}</span>
@@ -56,17 +67,13 @@ export default function MisPicks() {
                   )}
                   <span className="text-xs text-slate-500">{pick.league}</span>
                 </div>
-                {isLive ? (
+                {rc ? (
+                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${rc.bg} ${rc.text} ${rc.border}`}>
+                    {rc.badge}
+                  </span>
+                ) : isLive ? (
                   <span className="badge-live flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full">
                     <Flame className="h-3 w-3" /> EN JUEGO
-                  </span>
-                ) : pick.isCompleted ? (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    pick.result === 'WON' 
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                  }`}>
-                    {pick.result === 'WON' ? '✓ Ganada' : '✗ Perdida'}
                   </span>
                 ) : (
                   <div className="flex items-center gap-1 text-[10px] text-slate-500">
@@ -76,6 +83,21 @@ export default function MisPicks() {
                 )}
               </div>
 
+              {/* Result banner — shown when resolved */}
+              {rc && (
+                <div className={`mx-4 mt-3 rounded-xl p-3 flex items-center gap-3 ${rc.bg} border ${rc.border}`}>
+                  <div className={`h-11 w-11 rounded-full shrink-0 ${rc.icon} flex items-center justify-center text-2xl`}>
+                    {rc.emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-extrabold uppercase tracking-wider ${rc.text}`}>{rc.bannerLabel}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{rc.bannerSub}</p>
+                  </div>
+                  <CheckCircle className={`h-5 w-5 shrink-0 ${rc.text}`} />
+                </div>
+              )}
+
+              {/* Pick content */}
               <div className="px-4 py-3">
                 <div className="flex items-center gap-2 mb-2">
                   <Unlock className="h-3.5 w-3.5 text-emerald-400" />

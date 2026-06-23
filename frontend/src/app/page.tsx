@@ -400,6 +400,16 @@ function CheckoutModal({ prediction, onClose }: { prediction: Prediction; onClos
 
 // ── Pick Detail Modal (full content + image) ──────────────
 function PickDetailModal({ prediction, onClose }: { prediction: Prediction; onClose: () => void }) {
+  const isCompleted = prediction.isCompleted;
+  const result = prediction.result; // 'WON' | 'LOST' | 'VOID' | undefined
+
+  const resultConfig = {
+    WON:  { emoji: '🏆', label: '¡Pick GANADOR!', sub: 'El tipster marcó esta apuesta como ganada. ¡Enhorabuena!', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: 'bg-emerald-500/20', closeBg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20' },
+    LOST: { emoji: '❌', label: 'Pick perdido',   sub: 'El tipster marcó esta apuesta como perdida.',             bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    text: 'text-rose-400',    icon: 'bg-rose-500/20',    closeBg: 'bg-rose-500/10 border-rose-500/20 text-rose-300 hover:bg-rose-500/20' },
+    VOID: { emoji: '↩️', label: 'Apuesta anulada', sub: 'Esta apuesta fue anulada por el tipster.',                bg: 'bg-slate-800/50',  border: 'border-slate-700',      text: 'text-slate-400',   icon: 'bg-slate-700',      closeBg: 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700' },
+  } as const;
+  const rc = isCompleted && result && result in resultConfig ? resultConfig[result as keyof typeof resultConfig] : null;
+
   // Close on backdrop click
   return (
     <div
@@ -407,7 +417,7 @@ function PickDetailModal({ prediction, onClose }: { prediction: Prediction; onCl
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-[#0b1120] border border-emerald-500/20 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+        className={`w-full max-w-lg bg-[#0b1120] rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border ${rc ? rc.border : 'border-emerald-500/20'}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -422,6 +432,20 @@ function PickDetailModal({ prediction, onClose }: { prediction: Prediction; onCl
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+
+          {/* Result banner — prominent at top when resolved */}
+          {rc && (
+            <div className={`rounded-2xl p-4 ${rc.bg} border ${rc.border} flex items-center gap-4`}>
+              <div className={`h-14 w-14 shrink-0 rounded-full ${rc.icon} flex items-center justify-center text-3xl`}>
+                {rc.emoji}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-base font-extrabold ${rc.text}`}>{rc.label}</p>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{rc.sub}</p>
+              </div>
+            </div>
+          )}
+
           {/* Tipster */}
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0">
@@ -479,9 +503,9 @@ function PickDetailModal({ prediction, onClose }: { prediction: Prediction; onCl
         <div className="px-5 py-4 border-t border-white/5 shrink-0">
           <button
             onClick={onClose}
-            className="w-full py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-sm transition hover:bg-emerald-500/20"
+            className={`w-full py-3 rounded-xl font-bold text-sm transition border ${rc ? rc.closeBg : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'}`}
           >
-            ✓ Cerrar
+            {rc ? `${rc.emoji} Cerrar` : '✓ Cerrar'}
           </button>
         </div>
       </div>
@@ -540,6 +564,37 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasPending, isUnlocked, localPred.id]);
 
+  // Auto-polling: detect when tipster resolves a purchased pick (every 15s)
+  const resolvedPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    // Only poll if user has purchased this pick but it's not yet resolved
+    if (!isUnlocked || localPred.isCompleted) return;
+
+    const pollResolved = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+        const headers: any = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`${API_URL}/predictions/${localPred.id}`, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const updated: Prediction = data.prediction;
+        if (updated.isCompleted) {
+          // Tipster resolved the pick! Show result immediately
+          setLocalPred(updated);
+          usePredictionStore.getState().fetchPredictions();
+          if (resolvedPollingRef.current) clearInterval(resolvedPollingRef.current);
+        }
+      } catch {}
+    };
+
+    resolvedPollingRef.current = setInterval(pollResolved, 15_000);
+    return () => {
+      if (resolvedPollingRef.current) clearInterval(resolvedPollingRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUnlocked, localPred.isCompleted, localPred.id]);
+
   // Sync when parent prediction prop changes (e.g. after global refresh)
   useEffect(() => {
     setLocalPred(prediction);
@@ -565,7 +620,17 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
           )}
           <span className="text-xs text-slate-500">{localPred.league}</span>
         </div>
-        {isLive ? (
+        {localPred.isCompleted ? (
+          <span className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+            localPred.result === 'WON'
+              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+              : localPred.result === 'LOST'
+              ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
+              : 'text-slate-400 bg-slate-800 border-slate-700'
+          }`}>
+            {localPred.result === 'WON' ? '🏆 GANADA' : localPred.result === 'LOST' ? '❌ PERDIDA' : '↩️ ANULADA'}
+          </span>
+        ) : isLive ? (
           <span className="badge-live flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full">
             <Flame className="h-3 w-3" /> EN JUEGO
           </span>
@@ -606,39 +671,77 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
       {/* Content — clickable when unlocked to open full detail */}
       <div className="px-4 pb-4">
         {isUnlocked ? (
-          <button
-            onClick={() => setShowDetail(true)}
-            className="w-full text-left bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 hover:bg-emerald-500/10 hover:border-emerald-500/40 transition group"
-          >
-            <div className="flex items-center justify-between gap-1.5 mb-2">
-              <div className="flex items-center gap-1.5">
-                <Unlock className="h-3.5 w-3.5 text-emerald-400" />
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Desbloqueado — Toca para ver todo</span>
-              </div>
-              <ZoomIn className="h-3.5 w-3.5 text-emerald-400 opacity-60 group-hover:opacity-100 transition" />
-            </div>
-            <p className="text-sm text-slate-200 leading-relaxed line-clamp-2">{localPred.description}</p>
-            {localPred.imageUrl && (
-              <div className="mt-2 relative rounded-lg overflow-hidden border border-slate-700">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={localPred.imageUrl}
-                  alt="Apuesta"
-                  className="w-full object-cover max-h-44"
-                />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-full p-2">
-                    <ZoomIn className="h-5 w-5 text-white" />
-                  </div>
+          <>
+            {/* Result banner — only when pick is completed */}
+            {localPred.isCompleted && (
+              <div className={`mb-3 rounded-xl p-3 flex items-center gap-3 ${
+                localPred.result === 'WON'
+                  ? 'bg-emerald-500/10 border border-emerald-500/25'
+                  : localPred.result === 'LOST'
+                  ? 'bg-rose-500/10 border border-rose-500/25'
+                  : 'bg-slate-800/60 border border-slate-700'
+              }`}>
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center text-2xl shrink-0 ${
+                  localPred.result === 'WON' ? 'bg-emerald-500/20' : localPred.result === 'LOST' ? 'bg-rose-500/20' : 'bg-slate-700'
+                }`}>
+                  {localPred.result === 'WON' ? '🏆' : localPred.result === 'LOST' ? '❌' : '↩️'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-extrabold uppercase tracking-wider ${
+                    localPred.result === 'WON' ? 'text-emerald-400' : localPred.result === 'LOST' ? 'text-rose-400' : 'text-slate-400'
+                  }`}>
+                    {localPred.result === 'WON' ? '¡Tu pick fue GANADOR!' : localPred.result === 'LOST' ? 'Pick perdido' : 'Apuesta anulada'}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                    {localPred.result === 'WON'
+                      ? 'El tipster marcó esta apuesta como ganada. ¡Enhorabuena!'
+                      : localPred.result === 'LOST'
+                      ? 'El tipster marcó esta apuesta como perdida. Recibes una apuesta de reposición.'
+                      : 'Esta apuesta fue anulada por el tipster.'}
+                  </p>
                 </div>
               </div>
             )}
-            {localPred.betLink && (
-              <div className="mt-2 flex items-center gap-1 text-xs font-bold text-emerald-400">
-                🔗 Ver apuesta <ChevronRight className="h-3 w-3" />
+            <button
+              onClick={() => setShowDetail(true)}
+              className={`w-full text-left rounded-xl p-3 hover:opacity-90 transition group border ${
+                localPred.isCompleted && localPred.result === 'WON'
+                  ? 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10'
+                  : localPred.isCompleted && localPred.result === 'LOST'
+                  ? 'bg-rose-500/5 border-rose-500/20 hover:bg-rose-500/10'
+                  : 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1.5 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Unlock className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Desbloqueado — Toca para ver todo</span>
+                </div>
+                <ZoomIn className="h-3.5 w-3.5 text-emerald-400 opacity-60 group-hover:opacity-100 transition" />
               </div>
-            )}
-          </button>
+              <p className="text-sm text-slate-200 leading-relaxed line-clamp-2">{localPred.description}</p>
+              {localPred.imageUrl && (
+                <div className="mt-2 relative rounded-lg overflow-hidden border border-slate-700">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={localPred.imageUrl}
+                    alt="Apuesta"
+                    className="w-full object-cover max-h-44"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition">
+                    <div className="bg-white/10 backdrop-blur-sm rounded-full p-2">
+                      <ZoomIn className="h-5 w-5 text-white" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {localPred.betLink && (
+                <div className="mt-2 flex items-center gap-1 text-xs font-bold text-emerald-400">
+                  🔗 Ver apuesta <ChevronRight className="h-3 w-3" />
+                </div>
+              )}
+            </button>
+          </>
         ) : hasPending ? (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">
             <Clock className="h-5 w-5 text-amber-400 mx-auto mb-2 animate-pulse" />
@@ -670,7 +773,26 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
 
       {/* CTA */}
       <div className="px-4 pb-4">
-        {isLive && !isUnlocked ? (
+        {isUnlocked && localPred.isCompleted ? (
+          <button
+            onClick={() => setShowDetail(true)}
+            className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition press border ${
+              localPred.result === 'WON'
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
+                : localPred.result === 'LOST'
+                ? 'bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25'
+                : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+            }`}
+          >
+            {localPred.result === 'WON' ? (
+              <><CheckCircle className="h-4 w-4" /> 🏆 ¡Ganada! — Ver detalles</>
+            ) : localPred.result === 'LOST' ? (
+              <><CheckCircle className="h-4 w-4" /> ❌ Perdida — Ver análisis</>
+            ) : (
+              <><CheckCircle className="h-4 w-4" /> ↩️ Anulada — Ver detalles</>
+            )}
+          </button>
+        ) : isLive && !isUnlocked ? (
           <button disabled
             className="w-full py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-500 font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
             <Flame className="h-4 w-4 text-red-500" />
