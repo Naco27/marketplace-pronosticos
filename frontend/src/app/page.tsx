@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePredictionStore, Prediction } from '@/store/usePredictionStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useRouter } from 'next/navigation';
 import {
   ShieldCheck, TrendingUp, Star, Clock,
   Lock, Unlock, CheckCircle, Flame, ChevronRight,
-  Upload, X
+  Upload, X, ZoomIn, ExternalLink
 } from 'lucide-react';
 import { getAPI_URL, getBaseUrl } from '@/utils/config';
 
@@ -398,27 +398,156 @@ function CheckoutModal({ prediction, onClose }: { prediction: Prediction; onClos
   );
 }
 
+// ── Pick Detail Modal (full content + image) ──────────────
+function PickDetailModal({ prediction, onClose }: { prediction: Prediction; onClose: () => void }) {
+  // Close on backdrop click
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg bg-[#0b1120] border border-emerald-500/20 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b border-white/5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <Unlock className="h-4 w-4 text-emerald-400" />
+            <span className="text-sm font-extrabold text-white">Pick Desbloqueado</span>
+            <span className="text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">{prediction.sport}</span>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition p-1"><X className="h-5 w-5" /></button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+          {/* Tipster */}
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0">
+              {prediction.tipster?.name?.substring(0, 2).toUpperCase() || 'TS'}
+            </div>
+            <div>
+              <div className="flex items-center gap-1">
+                <span className="text-sm font-bold text-white">{prediction.tipster?.name}</span>
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+              </div>
+              <span className="text-xs text-emerald-400 font-semibold">Yield {prediction.tipster?.stats?.yield ?? 0}% · @{prediction.odds.toFixed(2)} · Stake {prediction.stake}/10</span>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4">
+            <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-2">📋 Apuesta</p>
+            <p className="text-base font-bold text-white leading-relaxed">{prediction.description}</p>
+          </div>
+
+          {/* Argumentation */}
+          {prediction.argumentation && (
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider mb-2">🧠 Análisis del Tipster</p>
+              <p className="text-sm text-slate-300 leading-relaxed">{prediction.argumentation}</p>
+            </div>
+          )}
+
+          {/* Full image — no height cap */}
+          {prediction.imageUrl && (
+            <div className="rounded-2xl overflow-hidden border border-slate-700 shadow-xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={prediction.imageUrl}
+                alt="Captura de apuesta"
+                className="w-full object-contain bg-black"
+              />
+            </div>
+          )}
+
+          {/* Bet link */}
+          {prediction.betLink && (
+            <a
+              href={prediction.betLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-400 font-bold text-sm transition"
+            >
+              <ExternalLink className="h-4 w-4" /> Ver apuesta en casa de apuestas
+            </a>
+          )}
+        </div>
+
+        {/* Close footer */}
+        <div className="px-5 py-4 border-t border-white/5 shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-sm transition hover:bg-emerald-500/20"
+          >
+            ✓ Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Pick Card ─────────────────────────────────────────────
 function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Prediction) => void }) {
   const expirationDate = prediction.availableUntil ? new Date(prediction.availableUntil) : new Date(prediction.eventDate);
   const initialLive = prediction.isLive || (expirationDate <= new Date() && !prediction.isCompleted);
   const [isLive, setIsLive] = useState(initialLive);
-  const isUnlocked = prediction.isUnlocked;
+  const [localPred, setLocalPred] = useState(prediction);
+  const [showDetail, setShowDetail] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isUnlocked = localPred.isUnlocked;
+  const hasPending = localPred.hasPendingPurchase;
 
   // Re-check live status every 5 seconds for real-time transition
   useEffect(() => {
-    if (isLive || prediction.isCompleted) return;
-    const expiration = prediction.availableUntil ? new Date(prediction.availableUntil) : new Date(prediction.eventDate);
+    if (isLive || localPred.isCompleted) return;
+    const expiration = localPred.availableUntil ? new Date(localPred.availableUntil) : new Date(localPred.eventDate);
     const id = setInterval(() => {
-      if (expiration <= new Date()) {
-        setIsLive(true);
-      }
+      if (expiration <= new Date()) setIsLive(true);
     }, 5_000);
     return () => clearInterval(id);
-  }, [isLive, prediction.eventDate, prediction.availableUntil, prediction.isCompleted]);
+  }, [isLive, localPred.eventDate, localPred.availableUntil, localPred.isCompleted]);
+
+  // Auto-polling: re-fetch this prediction every 8s if payment is pending
+  useEffect(() => {
+    if (!hasPending || isUnlocked) return;
+
+    const poll = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+        const headers: any = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`${API_URL}/predictions/${localPred.id}`, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const updated: Prediction = data.prediction;
+        if (updated.isUnlocked) {
+          // Payment approved! Update local state and trigger full refresh
+          setLocalPred(updated);
+          usePredictionStore.getState().fetchPredictions();
+          if (pollingRef.current) clearInterval(pollingRef.current);
+        }
+      } catch {}
+    };
+
+    pollingRef.current = setInterval(poll, 8_000);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPending, isUnlocked, localPred.id]);
+
+  // Sync when parent prediction prop changes (e.g. after global refresh)
+  useEffect(() => {
+    setLocalPred(prediction);
+  }, [prediction]);
 
   return (
-    <div className={`rounded-2xl border overflow-hidden mb-3 press transition-all ${
+    <>
+    <div className={`rounded-2xl border overflow-hidden mb-3 transition-all ${
       isLive && !isUnlocked
         ? 'border-red-500/20 bg-slate-900/70'
         : 'border-white/5 bg-slate-900/70'
@@ -427,14 +556,14 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
       <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-            {prediction.sport}
+            {localPred.sport}
           </span>
-          {prediction.isFixed && (
+          {localPred.isFixed && (
             <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-400/20 px-2 py-0.5 rounded-full animate-pulse">
               📌 FIJA
             </span>
           )}
-          <span className="text-xs text-slate-500">{prediction.league}</span>
+          <span className="text-xs text-slate-500">{localPred.league}</span>
         </div>
         {isLive ? (
           <span className="badge-live flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full">
@@ -443,7 +572,7 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
         ) : (
           <div className="flex items-center gap-1 text-[11px] text-amber-400 font-semibold">
             <Clock className="h-3 w-3" />
-            <TimeUntil date={prediction.availableUntil || prediction.eventDate} onExpired={() => setIsLive(true)} />
+            <TimeUntil date={localPred.availableUntil || localPred.eventDate} onExpired={() => setIsLive(true)} />
           </div>
         )}
       </div>
@@ -451,15 +580,15 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
       {/* Tipster row */}
       <div className="px-4 py-3 flex items-center gap-3">
         <div className="h-9 w-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0">
-          {prediction.tipster?.name?.substring(0, 2).toUpperCase() || 'TS'}
+          {localPred.tipster?.name?.substring(0, 2).toUpperCase() || 'TS'}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1">
-            <span className="text-sm font-bold text-white truncate">{prediction.tipster?.name}</span>
+            <span className="text-sm font-bold text-white truncate">{localPred.tipster?.name}</span>
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
           </div>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] text-emerald-400 font-semibold">Yield {prediction.tipster?.stats?.yield ?? 0}%</span>
+            <span className="text-[10px] text-emerald-400 font-semibold">Yield {localPred.tipster?.stats?.yield ?? 0}%</span>
             <div className="flex">
               {[...Array(5)].map((_, i) => (
                 <Star key={i} className={`h-2.5 w-2.5 ${i < 4 ? 'text-amber-400' : 'text-slate-700'}`}
@@ -469,41 +598,60 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
           </div>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-xl font-black text-white">@{prediction.odds.toFixed(2)}</p>
-          <p className="text-[10px] text-emerald-400 font-semibold">Stake {prediction.stake}/10</p>
+          <p className="text-xl font-black text-white">@{localPred.odds.toFixed(2)}</p>
+          <p className="text-[10px] text-emerald-400 font-semibold">Stake {localPred.stake}/10</p>
         </div>
       </div>
 
-      {/* Content */}
+      {/* Content — clickable when unlocked to open full detail */}
       <div className="px-4 pb-4">
         {isUnlocked ? (
-          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Unlock className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Desbloqueado</span>
+          <button
+            onClick={() => setShowDetail(true)}
+            className="w-full text-left bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 hover:bg-emerald-500/10 hover:border-emerald-500/40 transition group"
+          >
+            <div className="flex items-center justify-between gap-1.5 mb-2">
+              <div className="flex items-center gap-1.5">
+                <Unlock className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Desbloqueado — Toca para ver todo</span>
+              </div>
+              <ZoomIn className="h-3.5 w-3.5 text-emerald-400 opacity-60 group-hover:opacity-100 transition" />
             </div>
-            <p className="text-sm text-slate-200 leading-relaxed">{prediction.description}</p>
-            {prediction.argumentation && (
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">{prediction.argumentation}</p>
+            <p className="text-sm text-slate-200 leading-relaxed line-clamp-2">{localPred.description}</p>
+            {localPred.imageUrl && (
+              <div className="mt-2 relative rounded-lg overflow-hidden border border-slate-700">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={localPred.imageUrl}
+                  alt="Apuesta"
+                  className="w-full object-cover max-h-44"
+                />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-full p-2">
+                    <ZoomIn className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+              </div>
             )}
-            {prediction.imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={prediction.imageUrl} alt="Apuesta" className="rounded-lg mt-2 w-full object-cover max-h-32 border border-slate-700" />
-            )}
-            {prediction.betLink && (
-              <a href={prediction.betLink} target="_blank" rel="noopener noreferrer"
-                className="mt-2 flex items-center gap-1 text-xs font-bold text-emerald-400 hover:text-emerald-300">
+            {localPred.betLink && (
+              <div className="mt-2 flex items-center gap-1 text-xs font-bold text-emerald-400">
                 🔗 Ver apuesta <ChevronRight className="h-3 w-3" />
-              </a>
+              </div>
             )}
-          </div>
-        ) : prediction.hasPendingPurchase ? (
+          </button>
+        ) : hasPending ? (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">
             <Clock className="h-5 w-5 text-amber-400 mx-auto mb-2 animate-pulse" />
             <span className="text-xs font-bold text-amber-400 uppercase tracking-wider block">Pago en verificación ⏳</span>
             <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-              Tu comprobante ha sido enviado. El tipster está verificando la transferencia para desbloquear el pick.
+              Tu comprobante ha sido enviado. El tipster está verificando la transferencia. Se actualizará automáticamente.
             </p>
+            {/* Animated dots to show it's checking */}
+            <div className="flex items-center justify-center gap-1 mt-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-1.5 w-1.5 rounded-full bg-amber-400/60 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </div>
           </div>
         ) : (
           <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
@@ -529,22 +677,31 @@ function PickCard({ prediction, onBuy }: { prediction: Prediction; onBuy: (p: Pr
             En juego — venta cerrada
           </button>
         ) : isUnlocked ? (
-          <div className="w-full py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-sm flex items-center justify-center gap-2">
-            <CheckCircle className="h-4 w-4" /> Pick comprado
-          </div>
-        ) : prediction.hasPendingPurchase ? (
-          <div className="w-full py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-sm flex items-center justify-center gap-2 animate-pulse">
-            <Clock className="h-4 w-4 text-amber-400" /> Pago en verificación ⏳
+          <button
+            onClick={() => setShowDetail(true)}
+            className="w-full py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-500/20 transition press"
+          >
+            <CheckCircle className="h-4 w-4" /> Pick comprado — Ver detalles
+          </button>
+        ) : hasPending ? (
+          <div className="w-full py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-sm flex items-center justify-center gap-2">
+            <Clock className="h-4 w-4 text-amber-400 animate-pulse" /> Verificando pago...
           </div>
         ) : (
-          <button onClick={() => onBuy(prediction)}
+          <button onClick={() => onBuy(localPred)}
             className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-extrabold text-sm transition hover:opacity-90 press flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
             <TrendingUp className="h-4 w-4" />
-            Desbloquear — S/. {prediction.price.toFixed(2)}
+            Desbloquear — S/. {localPred.price.toFixed(2)}
           </button>
         )}
       </div>
     </div>
+
+    {/* Full Detail Modal */}
+    {showDetail && isUnlocked && (
+      <PickDetailModal prediction={localPred} onClose={() => setShowDetail(false)} />
+    )}
+    </>
   );
 }
 
