@@ -15,6 +15,7 @@ export default function Login() {
 
   const [code, setCode] = useState('');
   const [guestLoading, setGuestLoading] = useState(false);
+  const [tipsterLoading, setTipsterLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +24,22 @@ export default function Login() {
     if (ok) {
       router.push('/dashboard');
       router.refresh();
+    }
+  };
+
+  const handleTipsterDirectLogin = async () => {
+    setTipsterLoading(true);
+    try {
+      const ok = await login({ code: 'BETMARKET-PRO' });
+      if (ok) {
+        router.push('/dashboard');
+        router.refresh();
+      }
+    } catch (err) {
+      console.error('Tipster direct login failed:', err);
+      alert('Error al ingresar como tipster.');
+    } finally {
+      setTipsterLoading(false);
     }
   };
 
@@ -90,6 +107,13 @@ export default function Login() {
         className="w-full py-3.5 rounded-xl bg-slate-900/60 border border-white/10 text-white hover:bg-slate-900 font-bold text-sm transition flex items-center justify-center gap-2.5 press">
         <User className="h-4 w-4 text-emerald-400" />
         {guestLoading ? 'Ingresando...' : 'Ingresar Directo (Sin Registro)'}
+      </button>
+
+      {/* Direct Tipster Login Button */}
+      <button onClick={handleTipsterDirectLogin} disabled={tipsterLoading}
+        className="w-full mt-3 py-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 font-bold text-sm transition flex items-center justify-center gap-2.5 press">
+        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+        {tipsterLoading ? 'Ingresando...' : 'Ingresar Directo como Tipster'}
       </button>
     </div>
   );
