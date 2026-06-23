@@ -220,12 +220,14 @@ export const submitManualPaymentProof = async (req: Request, res: Response) => {
     }
 
     // Save proof and leave status as PENDING (waiting for Tipster or Admin approval)
+    const currentUserId = req.user?.userId || null;
     await prisma.purchase.update({
       where: { id: purchaseId },
       data: {
         screenshotUrl,
         referenceCode: referenceCode || null,
         status: 'PENDING',
+        ...(currentUserId && !purchase.punterId ? { punterId: currentUserId } : {}),
       },
     });
 

@@ -76,9 +76,10 @@ export const getPredictions = async (req: Request, res: Response) => {
               purchases: {
                 where: {
                   punterId: currentUserId,
-                  status: {
-                    in: ['COMPLETED', 'PENDING']
-                  }
+                  OR: [
+                    { status: 'COMPLETED' },
+                    { status: 'PENDING', screenshotUrl: { not: null } }
+                  ]
                 },
               },
             }
@@ -94,7 +95,7 @@ export const getPredictions = async (req: Request, res: Response) => {
       const isAdmin = currentUserRole === 'ADMIN';
       const purchase = pred.purchases && pred.purchases[0];
       const hasPurchased = purchase && purchase.status === 'COMPLETED';
-      const hasPending = purchase && purchase.status === 'PENDING';
+      const hasPending = purchase && purchase.status === 'PENDING' && purchase.screenshotUrl !== null;
       const showFullInfo = isAuthor || isAdmin || hasPurchased || pred.price === 0;
       const expirationTime = pred.availableUntil ? new Date(pred.availableUntil) : new Date(pred.eventDate);
       const isLive = expirationTime <= now && !pred.isCompleted;
@@ -142,9 +143,10 @@ export const getPredictionById = async (req: Request, res: Response) => {
               purchases: {
                 where: {
                   punterId: currentUserId,
-                  status: {
-                    in: ['COMPLETED', 'PENDING']
-                  }
+                  OR: [
+                    { status: 'COMPLETED' },
+                    { status: 'PENDING', screenshotUrl: { not: null } }
+                  ]
                 },
               },
             }
@@ -160,7 +162,7 @@ export const getPredictionById = async (req: Request, res: Response) => {
     const isAdmin = currentUserRole === 'ADMIN';
     const purchase = prediction.purchases && prediction.purchases[0];
     const hasPurchased = purchase && purchase.status === 'COMPLETED';
-    const hasPending = purchase && purchase.status === 'PENDING';
+    const hasPending = purchase && purchase.status === 'PENDING' && purchase.screenshotUrl !== null;
     const showFullInfo = isAuthor || isAdmin || hasPurchased || prediction.price === 0;
     const expirationTime = prediction.availableUntil ? new Date(prediction.availableUntil) : new Date(prediction.eventDate);
     const isLive = expirationTime <= new Date() && !prediction.isCompleted;
