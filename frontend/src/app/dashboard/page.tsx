@@ -75,18 +75,22 @@ export default function Dashboard() {
     if (!accessToken || !user) return;
     setDashboardLoading(true);
     try {
-      // 1. Get published picks (filters by this tipster)
-      const resPicks = await fetch(`${API_URL}/predictions?tipsterId=${user.id}`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      const dataPicks = await resPicks.json();
-      if (resPicks.ok) setPublishedPicks(dataPicks.predictions);
+      // Carga paralela para mayor velocidad
+      const [resPicks, resSales] = await Promise.all([
+        fetch(`${API_URL}/predictions?tipsterId=${user.id}`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        }),
+        fetch(`${API_URL}/purchases/history/sales`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        }),
+      ]);
 
-      // 2. Get sales history
-      const resSales = await fetch(`${API_URL}/purchases/history/sales`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      const dataSales = await resSales.json();
+      const [dataPicks, dataSales] = await Promise.all([
+        resPicks.json(),
+        resSales.json(),
+      ]);
+
+      if (resPicks.ok) setPublishedPicks(dataPicks.predictions);
       if (resSales.ok) {
         setSalesHistory(dataSales.sales);
         setTotalSalesEarnings(dataSales.totalEarnings);
@@ -140,10 +144,12 @@ export default function Dashboard() {
     setActiveTab(tab);
     if (tab === 'ADMIN_PAYMENTS') {
       loadPendingPayments();
-    } else if (tab === 'SALES') {
+    } else if (tab === 'SALES' && user?.role === 'TIPSTER') {
       loadTipsterData();
     } else if (tab === 'OVERVIEW' && user?.role === 'TIPSTER') {
       loadTipsterData();
+    } else if (tab === 'CREATE_PICK' && user?.role === 'TIPSTER') {
+      // No carga necesaria al abrir formulario
     } else if (tab === 'PURCHASES' && user?.role === 'PUNTER') {
       loadPunterData();
     }
@@ -160,28 +166,36 @@ export default function Dashboard() {
   };
 
   // Helper to calculate the availableUntil datetime based only on chosen hour and minute.
-  // If the time has already passed today, it assumes tomorrow.
+  // Uses the local timezone offset so the backend (UTC) interprets the time correctly.
+  // If the selected time has already passed today, it assumes tomorrow.
   const getAvailableUntilDateTime = (hourStr: string, minuteStr: string) => {
     const now = new Date();
     const expHour = parseInt(hourStr, 10);
     const expMin = parseInt(minuteStr, 10);
     
-    // Create a date object for today with the selected hour and minute
-    const expDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), expHour, expMin, 0);
+    // Build a local date with the chosen hour and minute (uses local time)
+    const expDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), expHour, expMin, 0, 0);
     
-    // If that time has already passed today, assume it is for tomorrow
-    if (expDate <= now) {
+    // If the selected time is in the past today, move to tomorrow
+    // Use a 1-minute buffer to avoid edge cases right on the boundary
+    if (expDate.getTime() <= now.getTime() + 60_000) {
       expDate.setDate(expDate.getDate() + 1);
     }
     
-    // Format as YYYY-MM-DDTHH:MM
+    // Build ISO string with the local UTC offset so the server stores the correct moment
+    // e.g. "2026-06-23T10:00:00-05:00" instead of "2026-06-23T10:00" (which JS treats as UTC)
+    const tzOffset = -expDate.getTimezoneOffset(); // minutes offset from UTC
+    const tzSign = tzOffset >= 0 ? '+' : '-';
+    const tzHours = String(Math.floor(Math.abs(tzOffset) / 60)).padStart(2, '0');
+    const tzMins = String(Math.abs(tzOffset) % 60).padStart(2, '0');
+    
     const year = expDate.getFullYear();
     const month = String(expDate.getMonth() + 1).padStart(2, '0');
     const day = String(expDate.getDate()).padStart(2, '0');
     const hour = String(expDate.getHours()).padStart(2, '0');
     const minute = String(expDate.getMinutes()).padStart(2, '0');
     
-    return `${year}-${month}-${day}T${hour}:${minute}`;
+    return `${year}-${month}-${day}T${hour}:${minute}:00${tzSign}${tzHours}:${tzMins}`;
   };
 
   // Actions handlers
@@ -400,63 +414,114 @@ export default function Dashboard() {
           {/* 1. TIPSTER OVERVIEW */}
           {!dashboardLoading && activeTab === 'OVERVIEW' && user.role === 'TIPSTER' && (
             <div className="space-y-6">
-              <h3 className="text-lg font-bold text-white">Listado de Pronósticos</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-white">Mis Apuestas Publicadas</h3>
+                <span className="text-xs text-slate-400 bg-slate-900/60 border border-white/5 px-3 py-1 rounded-full">
+                  {publishedPicks.length} picks
+                </span>
+              </div>
               {publishedPicks.length === 0 ? (
                 <div className="glass-panel p-8 text-center text-slate-400 text-sm rounded-xl">No has publicado ningún pick aún.</div>
               ) : (
-                <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2">
-                  {publishedPicks.map((pick) => (
+                <div className="grid gap-5 sm:grid-cols-1 md:grid-cols-2">
+                  {publishedPicks.map((pick) => {
+                    const now = new Date();
+                    const expirationTime = pick.availableUntil ? new Date(pick.availableUntil) : new Date(pick.eventDate);
+                    const isLive = expirationTime <= now && !pick.isCompleted;
+                    const isAvailable = !pick.isCompleted && !isLive;
+                    return (
                     <div key={pick.id} className="glass-panel rounded-xl p-5 border border-slate-800 flex flex-col justify-between">
                       <div>
-                        <div className="flex justify-between items-center text-xs text-slate-400">
-                          <div className="flex items-center gap-2">
+                        {/* Header */}
+                        <div className="flex justify-between items-start text-xs text-slate-400 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-white bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full">{pick.sport}</span>
                             {pick.isFixed && (
                               <span className="font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full">📌 FIJA</span>
                             )}
+                            {/* Estado de disponibilidad */}
+                            {!pick.isCompleted && (
+                              isLive
+                                ? <span className="animate-pulse font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded-full">🔥 EN JUEGO</span>
+                                : <span className="font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">✅ DISPONIBLE</span>
+                            )}
                           </div>
-                          <span>{pick.league}</span>
+                          {pick.availableUntil && (
+                            <div className="flex items-center gap-1 text-slate-500 shrink-0">
+                              <Clock className="h-3 w-3" />
+                              <span>Hasta: {new Date(pick.availableUntil).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="mt-4 flex gap-4 text-sm font-semibold">
+
+                        {/* Stats row */}
+                        <div className="flex gap-4 text-sm font-semibold mb-3">
                           <div>Cuota: <span className="text-white">@{pick.odds.toFixed(2)}</span></div>
                           <div>Stake: <span className="text-emerald-400">{pick.stake}/10</span></div>
                           <div>Precio: <span className="text-cyan-400">S/. {pick.price.toFixed(2)}</span></div>
                         </div>
-                        <p className="mt-3 text-xs text-slate-300 italic bg-slate-900/50 p-2.5 rounded border border-slate-800">{pick.description}</p>
+
+                        {/* Descripción completa (el tipster siempre la ve) */}
+                        <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">📋 Apuesta</p>
+                          <p className="text-xs text-slate-200 leading-relaxed">{pick.description}</p>
+                        </div>
+
+                        {/* Argumentación */}
+                        {pick.argumentation && (
+                          <div className="mt-2 bg-slate-900/30 rounded-lg p-3 border border-slate-800">
+                            <p className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-1">🧠 Análisis</p>
+                            <p className="text-xs text-slate-300 leading-relaxed line-clamp-3">{pick.argumentation}</p>
+                          </div>
+                        )}
+
+                        {/* Link */}
+                        {pick.betLink && (
+                          <a href={pick.betLink} target="_blank" rel="noopener noreferrer"
+                            className="mt-2 flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 transition">
+                            🔗 Ver en casa de apuestas
+                          </a>
+                        )}
                       </div>
 
-                      <div className="mt-5 pt-3 border-t border-slate-800/50 flex justify-between items-center">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                      {/* Footer */}
+                      <div className="mt-4 pt-3 border-t border-slate-800/50 flex justify-between items-center">
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
                           pick.isCompleted 
                             ? pick.result === 'WON' 
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
                               : pick.result === 'LOST' 
-                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
-                                : 'bg-slate-800 text-slate-400' 
-                            : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
+                                : 'bg-slate-800 text-slate-400 border-slate-700' 
+                            : isLive
+                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                              : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
                         }`}>
-                          {pick.isCompleted ? `RESUELTO: ${pick.result}` : 'PENDIENTE'}
+                          {pick.isCompleted 
+                            ? `${pick.result === 'WON' ? '🏆' : pick.result === 'LOST' ? '❌' : '↩️'} ${pick.result}` 
+                            : isLive ? '🔥 En Juego' : '⏳ Pendiente'}
                         </span>
 
                         {!pick.isCompleted && (
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleResolvePick(pick.id, 'WON')}
-                              className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold px-3 py-1.5 rounded transition"
+                              className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg transition"
                             >
-                              Ganada
+                              ✓ Ganada
                             </button>
                             <button
                               onClick={() => handleResolvePick(pick.id, 'LOST')}
-                              className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded transition"
+                              className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
                             >
-                              Perdida
+                              ✗ Perdida
                             </button>
                           </div>
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
